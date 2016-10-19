@@ -1,4 +1,4 @@
-package main
+package goxls
 
 /*
 #cgo pkg-config: freexl
@@ -30,11 +30,22 @@ char* xls_get_cell_value(FreeXL_CellValue *cell) {
 	}
 	return 0;
 }
+
+int xls_get_cell_int(FreeXL_CellValue *cell) {
+        return cell->value.int_value;
+}
+double xls_get_cell_double(FreeXL_CellValue *cell) {
+        return cell->value.double_value;
+}
+char* xls_get_cell_text(FreeXL_CellValue *cell) {
+        return cell->value.text_value;
+}
 */
 import "C"
 
 import (
 	// "runtime"
+	"errors"
 	"unsafe"
 )
 
@@ -158,15 +169,18 @@ func (thiz *XlsCellValue) GetType() int {
 }
 
 func (thiz *XlsCellValue) GetInt() int {
-	return int(*C.xls_get_cell_value(&thiz.Cell))
+	// return int(*C.xls_get_cell_value(&thiz.Cell))
+	return int(C.xls_get_cell_int(&thiz.Cell))
 }
 
 func (thiz *XlsCellValue) GetDouble() float64 {
-	return float64(*C.xls_get_cell_value(&thiz.Cell))
+	// return float64(*C.xls_get_cell_value(&thiz.Cell))
+	return float64(C.xls_get_cell_double(&thiz.Cell))
 }
 
 func (thiz *XlsCellValue) GetText() string {
-	p := C.xls_get_cell_value(&thiz.Cell)
+	//p := C.xls_get_cell_value(&thiz.Cell)
+	p := C.xls_get_cell_text(&thiz.Cell)
 	str := C.GoString(p)
 	return str
 }
@@ -228,7 +242,7 @@ func (thiz *XlsHandle) GetActiveWorksheet() int {
 	return -1
 }
 
-func (thiz *XlsHandle) GetCellValue(row uint, column uint16) *XlsCellValue {
+func (thiz *XlsHandle) GetCellValue(row uint, column uint) *XlsCellValue {
 	cell := &XlsCellValue{}
 	rc := C.freexl_get_cell_value(thiz.cptr,
 		C.uint(row), C.ushort(column), &cell.Cell)
@@ -238,16 +252,37 @@ func (thiz *XlsHandle) GetCellValue(row uint, column uint16) *XlsCellValue {
 	return nil
 }
 
-func (thiz *XlsHandle) GetInfo(what uint16) uint {
+func (thiz *XlsHandle) GetInfo(what int) (uint, error) {
 	var info C.uint
 	rc := C.freexl_get_info(thiz.cptr, C.ushort(what), &info)
 	if rc == C.FREEXL_OK {
-		return uint(info)
+		return uint(info), nil
 	}
-	return 0
+	return 0, errors.New("freexl_get_info failure")
 }
 
-func (thiz *XlsHandle) GetWorksheetName(sheet_index uint16) string {
+// for BIFF_V8
+func (thiz *XlsHandle) GetStringCount() (sst uint, err error) {
+	sst, err = thiz.GetInfo(C.FREEXL_BIFF_STRING_COUNT)
+	return
+}
+
+func (thiz *XlsHandle) GetFormatCount() (format uint, err error) {
+	format, err = thiz.GetInfo(C.FREEXL_BIFF_FORMAT_COUNT)
+	return
+}
+
+func (thiz *XlsHandle) GetXfCount() (xf uint, err error) {
+	xf, err = thiz.GetInfo(C.FREEXL_BIFF_XF_COUNT)
+	return
+}
+
+func (thiz *XlsHandle) GetSheetCount() (sheet uint, err error) {
+	sheet, err = thiz.GetInfo(C.FREEXL_BIFF_SHEET_COUNT)
+	return
+}
+
+func (thiz *XlsHandle) GetWorksheetName(sheet_index uint) string {
 	var buf *C.char
 	rc := C.freexl_get_worksheet_name(thiz.cptr, C.ushort(sheet_index), &buf)
 	if rc == C.FREEXL_OK {
@@ -257,7 +292,7 @@ func (thiz *XlsHandle) GetWorksheetName(sheet_index uint16) string {
 	return ""
 }
 
-func (thiz *XlsHandle) GetSelectActiveWorksheet(sheet_index uint16) bool {
+func (thiz *XlsHandle) GetSelectActiveWorksheet(sheet_index uint) bool {
 	rc := C.freexl_select_active_worksheet(thiz.cptr, C.ushort(sheet_index))
 	if rc == C.FREEXL_OK {
 		return true
@@ -265,12 +300,12 @@ func (thiz *XlsHandle) GetSelectActiveWorksheet(sheet_index uint16) bool {
 	return false
 }
 
-func (thiz *XlsHandle) WorksheetDimensions() (rows uint, colums uint16) {
+func (thiz *XlsHandle) WorksheetDimensions() (rows uint, colums uint, err error) {
 	var crows C.uint
 	var ccolums C.ushort
 	rc := C.freexl_worksheet_dimensions(thiz.cptr, &crows, &ccolums)
 	if rc == C.FREEXL_OK {
-		return uint(crows), uint16(ccolums)
+		return uint(crows), uint(ccolums), nil
 	}
-	return 0, 0
+	return 0, 0, errors.New("dimensions failure")
 }
